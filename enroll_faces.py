@@ -11,6 +11,17 @@ DATABASE_FILE = 'face_database.pkl'
 if os.path.exists(DATABASE_FILE):
     with open(DATABASE_FILE, 'rb') as f:
         known_faces = pickle.load(f)  # Load the dictionary of names -> encodings
+    
+    # BACKWARD COMPATIBILITY: Convert old format to new format
+    # Old format: known_faces["John"] = [0.1, 0.2, ..., 0.5]  (single encoding)
+    # New format: known_faces["John"] = [[0.1, 0.2, ...], [0.3, 0.4, ...]]  (list of encodings)
+    for name in list(known_faces.keys()):
+        # Check if this person's data is in old format (single encoding)
+        if len(known_faces[name]) > 0 and isinstance(known_faces[name][0], (float, int)):
+            # Convert: wrap the single encoding in a list to make it a list of encodings
+            known_faces[name] = [known_faces[name]]
+            print(f"  Converted {name} to new format (1 photo)")
+    
     print(f"Loaded {len(known_faces)} existing face(s)")
 else:
     known_faces = {}  # Empty dictionary to start fresh
@@ -29,19 +40,37 @@ def enroll_person():
             return
     
     print(f"\nEnrolling {name}...")
-    print("Press SPACE to capture photo, ESC to cancel")
+    print("We'll capture 3 photos for better accuracy")
+    print("Press SPACE to capture each photo, ESC to cancel")
+    
+    # List to store all 3 encodings for this person
+    encodings_list = []
+    photos_captured = 0
     
     # Open webcam
     cap = cv2.VideoCapture(0)
     
-    while True:
+    while photos_captured < 3:  # Loop until we have 3 photos
         ret, frame = cap.read()  # Read frame from webcam
         if not ret:
             break
         
-        # Display instructions on screen
-        cv2.putText(frame, "Press SPACE to capture", (10, 30), 
+        # Display instructions on screen - show which photo number we're on
+        instruction_text = f"Photo {photos_captured + 1}/3 - Press SPACE to capture"
+        cv2.putText(frame, instruction_text, (10, 30), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        
+        # Show tips for different photos
+        if photos_captured == 0:
+            cv2.putText(frame, "Look straight at camera", (10, 60), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+        elif photos_captured == 1:
+            cv2.putText(frame, "Turn head slightly left/right", (10, 60), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+        else:
+            cv2.putText(frame, "Different expression (smile/neutral)", (10, 60), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+        
         cv2.imshow('Enrollment', frame)
         
         key = cv2.waitKey(1) & 0xFF
@@ -62,10 +91,17 @@ def enroll_person():
                 print("Multiple faces detected! Make sure only one person is visible.")
                 continue
             else:
-                # Save the face encoding (128-number representation of the face)
-                known_faces[name] = face_encodings[0]
-                print(f"✓ {name} enrolled successfully!")
-                break
+                # Save this encoding to our list
+                encodings_list.append(face_encodings[0])
+                photos_captured += 1
+                print(f"✓ Photo {photos_captured}/3 captured!")
+                
+                # If we have all 3 photos, we're done!
+                if photos_captured == 3:
+                    # Store the list of 3 encodings for this person
+                    known_faces[name] = encodings_list
+                    print(f"✓ {name} enrolled successfully with 3 photos!")
+                    break
         
         elif key == 27:  # ESC key pressed - cancel enrollment
             print("Enrollment cancelled")
@@ -95,11 +131,12 @@ while True:
     if choice == '1':
         enroll_person()
     elif choice == '2':
-        # Show all enrolled names
+        # Show all enrolled names with photo count
         if known_faces:
             print("\nEnrolled people:")
             for name in known_faces.keys():
-                print(f"  - {name}")
+                num_photos = len(known_faces[name])  # Count how many photos this person has
+                print(f"  - {name} ({num_photos} photo{'s' if num_photos != 1 else ''})")
         else:
             print("No people enrolled yet")
     elif choice == '3':
