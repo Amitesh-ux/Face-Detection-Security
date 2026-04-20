@@ -152,17 +152,21 @@ while True:
         if name == "UNKNOWN":
             unknown_seen = True
 
-    # Alarm + auto-snapshot for new detections
-    for name in current_seen - seen_this_cycle:
-        last_t = last_alarm_time.get(name)
-        if last_t is None or (now - last_t).total_seconds() > ALARM_COOLDOWN:
-            last_alarm_time[name] = now
-            if name == "UNKNOWN":
-                log_event("!! UNKNOWN face detected")
-                save_snapshot(frame, "UNKNOWN")
-                flash_frames = FLASH_DURATION
-            else:
-                log_event(f">> {name}")
+    # Log + alarm only when a face newly enters the frame
+    just_entered = current_seen - seen_this_cycle
+    just_left    = seen_this_cycle - current_seen
+
+    for name in just_entered:
+        if name == "UNKNOWN":
+            log_event("!! UNKNOWN face detected")
+            save_snapshot(frame, "UNKNOWN")
+            flash_frames = FLASH_DURATION
+        else:
+            log_event(f">> {name} entered")
+
+    for name in just_left:
+        if name != "UNKNOWN":
+            log_event(f"-- {name} left")
 
     seen_this_cycle = current_seen
 
